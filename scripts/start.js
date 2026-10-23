@@ -5,6 +5,7 @@ import { expand } from 'dotenv-expand';
 import { config } from 'dotenv-flow';
 import express from 'express';
 import proxy from 'express-http-proxy';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import createRammerhead from 'rammerhead/src/server/index.js';
@@ -14,6 +15,8 @@ import { websitePath } from 'website';
 expand(config());
 
 const rh = createRammerhead();
+const siteBrandName = 'Northstar Gateway';
+const customBrandCss = '/assets/brand.css';
 
 // used when forwarding the script
 const rammerheadScopes = [
@@ -26,7 +29,6 @@ const rammerheadScopes = [
 	'/messaging',
 	'/sessionexists',
 	'/deletesession',
-	'/newsession',
 	'/editsession',
 	'/needpassword',
 	'/syncLocalStorage',
@@ -38,6 +40,46 @@ const rammerheadSession = /^\/[a-z0-9]{32}/;
 console.log(`${chalk.cyan('Starting the server...')}\n`);
 
 const app = express();
+
+app.use(
+	'/assets',
+	express.static(join(process.cwd(), 'assets'), { fallthrough: false })
+);
+
+app.use((req, res, next) => {
+	if (!req.accepts('html')) return next();
+
+	const pathname = req.path;
+	if (pathname !== '/' && !pathname.endsWith('.html')) return next();
+
+	const filePath = join(
+		websitePath,
+		pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')
+	);
+
+	if (!filePath.startsWith(websitePath)) return next();
+
+	try {
+		const source = readFileSync(filePath, 'utf8');
+		const brandedHtml = source
+			.replace(
+				/<title>[\s\S]*?<\/title>/i,
+				`<title>${siteBrandName}</title>`
+			)
+			.replace(
+				/<\/head>/i,
+				`<link rel="stylesheet" href="${customBrandCss}">
+				<meta name="theme-color" content="#09111f">
+				<meta name="description" content="${siteBrandName} — a clean, modern portal for everyday browsing.">
+				</head>`
+			);
+
+		res.type('html');
+		return res.send(brandedHtml);
+	} catch (error) {
+		return next();
+	}
+});
 
 app.use(
 	'/api/db',
@@ -128,7 +170,7 @@ while (true) {
 		);
 
 		console.log(
-			`You can now view ${chalk.bold('website-aio')} in the browser.`
+			`You can now view ${chalk.bold(siteBrandName)} in the browser.`
 		);
 
 		console.log('');
